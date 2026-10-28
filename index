@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rút Gọn Link & Quản Lý QR Động Chính Chủ</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .card { border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+    #qrCanvasContainer img { margin: 0 auto; padding: 10px; background: #fff; border-radius: 8px; border: 1px solid #cbd5e1; }
+    .spinner-box { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 85vh; }
+  </style>
+</head>
+<body>
+
+  <!-- 1. MÀN HÌNH CHUYỂN HƯỚNG KHI QUÉT MÃ / CLICK LINK RÚT GỌN -->
+  <div id="redirectScreen" class="container spinner-box d-none text-center">
+    <div class="spinner-border text-primary" style="width: 3.5rem; height: 3.5rem;" role="status"></div>
+    <h4 class="mt-4 fw-bold text-dark">Đang chuyển tiếp tới trang đích...</h4>
+    <p class="text-muted small" id="redirectStatus">Đang tra cứu từ Google Sheets</p>
+  </div>
+
+  <!-- 2. TRANG QUẢN TRỊ TẠO QR & RÚT GỌN LINK -->
+  <div id="adminScreen" class="container py-4 d-none">
+    <header class="pb-3 mb-4 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h3 class="fw-bold text-primary mb-0">Hệ Thống QR Động & Link Rút Gọn Riêng</h3>
+        <span class="text-muted small">Lưu trữ vĩnh viễn trên GitHub Pages & Google Sheets (Không dùng dịch vụ thứ 3)</span>
+      </div>
+      <button class="btn btn-outline-secondary btn-sm" onclick="loadQRList()">🔄 Làm mới bảng</button>
+    </header>
+
+    <div class="row g-4">
+      <!-- Cột Tạo / Cập nhật -->
+      <div class="col-lg-5">
+        <div class="card p-4">
+          <h5 class="fw-bold mb-3 text-secondary">Tạo / Sửa Link Đích</h5>
+          <form id="qrForm" onsubmit="handleSaveQR(event)">
+            
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Mã định danh (ID rút gọn):</label>
+              <div class="input-group">
+                <input type="text" id="qrId" class="form-control font-monospace" placeholder="vd: v1, hd, baitap" required>
+                <button class="btn btn-outline-secondary" type="button" onclick="generateShortId()">Tạo mã ngắn</button>
+              </div>
+              <div class="form-text">ID càng ngắn thì link càng gọn và mã QR càng thưa, nhạy.</div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Tên gợi nhớ:</label>
+              <input type="text" id="qrTitle" class="form-control" placeholder="vd: Tài liệu buổi tập huấn">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Link đích thực tế (Target URL):</label>
+              <textarea id="qrTargetUrl" class="form-control font-monospace" rows="3" placeholder="https://..." required></textarea>
+              <div class="form-text text-success">Đổi link đích bất kỳ lúc nào, QR và link rút gọn không thay đổi!</div>
+            </div>
+
+            <button type="submit" id="btnSubmit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm">
+              Lưu & Xuất Mã QR
+            </button>
+          </form>
+
+          <!-- Kết quả tạo mã -->
+          <div id="resultArea" class="mt-4 d-none border-top pt-3">
+            <h6 class="fw-bold text-success text-center mb-3">Tạo Thành Công!</h6>
+            
+            <div class="mb-3">
+              <label class="small text-muted fw-bold">LINK RÚT GỌN CHÍNH CHỦ:</label>
+              <div class="input-group">
+                <input type="text" id="resultShortUrl" class="form-control font-monospace bg-light" readonly>
+                <button class="btn btn-outline-primary" type="button" onclick="copyShortUrl()">📋 Chép</button>
+              </div>
+            </div>
+
+            <div class="text-center">
+              <label class="small text-muted fw-bold d-block mb-2">MÃ QR ĐỘNG TƯƠNG ỨNG:</label>
+              <div id="qrCanvasContainer" class="d-flex justify-content-center mb-3"></div>
+              <button class="btn btn-success btn-sm px-4 fw-semibold" onclick="downloadQRCode()">
+                📥 Tải Ảnh QR Độ Nét Cao (.PNG)
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cột Danh sách quản lý -->
+      <div class="col-lg-7">
+        <div class="card p-4">
+          <h5 class="fw-bold mb-3 text-secondary">Danh Sách Mã Đang Quản Lý</h5>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead class="table-light small">
+                <tr>
+                  <th>ID / Tên</th>
+                  <th>Link Rút Gọn Cố Định</th>
+                  <th>Link Đích</th>
+                  <th>Lượt mở</th>
+                  <th>Sửa</th>
+                </tr>
+              </thead>
+              <tbody id="qrTableBody">
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-3">Đang đồng bộ dữ liệu...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================
+    // CẤU HÌNH API GOOGLE APPS SCRIPT
+    // ========================================================
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxRC08a1VjtPFcT9joLzIY7LHCpYO5lEuNr0dDvVmpNrej9aZ3r_O3BqFm0s2CVKOM/exec";
+
+    // URL gốc sạch của GitHub Pages
+    const BASE_GATEWAY_URL = window.location.origin + window.location.pathname;
+
+    let qrcodeInstance = null;
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const scanId = urlParams.get("id");
+
+      if (scanId) {
+        // Có id -> Quét mã / click link rút gọn -> Chuyển hướng
+        document.getElementById("redirectScreen").classList.remove("d-none");
+        executeRedirect(scanId);
+      } else {
+        // Không có id -> Quản trị viên -> Mở Dashboard
+        document.getElementById("adminScreen").classList.remove("d-none");
+        loadQRList();
+      }
+    });
+
+    async function executeRedirect(id) {
+      try {
+        const response = await fetch(`${GAS_API_URL}?action=redirect&id=${encodeURIComponent(id)}`);
+        const result = await response.json();
+
+        if (result.status === "success" && result.target_url) {
+          document.getElementById("redirectStatus").innerText = "Đang chuyển trang...";
+          window.location.replace(result.target_url);
+        } else {
+          document.getElementById("redirectStatus").innerHTML = `<span class="text-danger">${result.message || "Link không tồn tại!"}</span>`;
+        }
+      } catch (err) {
+        document.getElementById("redirectStatus").innerHTML = `<span class="text-danger">Lỗi kết nối cơ sở dữ liệu!</span>`;
+      }
+    }
+
+    async function loadQRList() {
+      const tbody = document.getElementById("qrTableBody");
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">Đang cập nhật...</td></tr>`;
+
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=list`);
+        const json = await res.json();
+
+        if (json.status === "success" && json.data.length > 0) {
+          tbody.innerHTML = json.data.map(item => `
+            <tr>
+              <td>
+                <span class="badge bg-secondary font-monospace">${item.id}</span>
+                <div class="small fw-semibold mt-1">${item.title || "—"}</div>
+              </td>
+              <td>
+                <a href="${item.short_url}" target="_blank" class="fw-bold text-decoration-none font-monospace small">${item.short_url}</a>
+              </td>
+              <td>
+                <div class="small text-truncate font-monospace" style="max-width: 140px;" title="${item.target_url}">
+                  ${item.target_url}
+                </div>
+              </td>
+              <td><span class="badge bg-info text-dark">${item.clicks}</span></td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="selectForEdit('${item.id}', '${item.title.replace(/'/g, "\\'")}', '${encodeURIComponent(item.target_url)}', '${item.short_url}')">
+                  Sửa
+                </button>
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">Chưa có link nào.</td></tr>`;
+        }
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Không kết nối được Google Sheets.</td></tr>`;
+      }
+    }
+
+    async function handleSaveQR(e) {
+      e.preventDefault();
+      const btn = document.getElementById("btnSubmit");
+      const id = document.getElementById("qrId").value.trim();
+      const title = document.getElementById("qrTitle").value.trim();
+      const target_url = document.getElementById("qrTargetUrl").value.trim();
+
+      btn.disabled = true;
+      btn.innerText = "⏳ Đang lưu dữ liệu...";
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            id: id,
+            title: title,
+            target_url: target_url,
+            gateway_base: BASE_GATEWAY_URL
+          })
+        });
+        const result = await res.json();
+
+        if (result.status === "success") {
+          const shortUrl = result.short_url;
+          document.getElementById("resultShortUrl").value = shortUrl;
+          renderQRCode(shortUrl);
+          document.getElementById("resultArea").classList.remove("d-none");
+          loadQRList();
+        } else {
+          alert("Lỗi: " + result.message);
+        }
+      } catch (err) {
+        alert("Lỗi kết nối khi gửi dữ liệu!");
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Lưu & Xuất Mã QR";
+      }
+    }
+
+    function renderQRCode(urlToEncode) {
+      const container = document.getElementById("qrCanvasContainer");
+      container.innerHTML = "";
+
+      qrcodeInstance = new QRCode(container, {
+        text: urlToEncode,
+        width: 220,
+        height: 220,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+
+    function downloadQRCode() {
+      const img = document.querySelector("#qrCanvasContainer img");
+      if (!img) return;
+
+      const link = document.createElement("a");
+      link.href = img.src;
+      link.download = `QR_${document.getElementById("qrId").value || "code"}.png`;
+      link.click();
+    }
+
+    function copyShortUrl() {
+      const shortUrlInput = document.getElementById("resultShortUrl");
+      navigator.clipboard.writeText(shortUrlInput.value).then(() => {
+        alert("Đã sao chép link rút gọn: " + shortUrlInput.value);
+      });
+    }
+
+    function selectForEdit(id, title, encodedTargetUrl, shortUrl) {
+      document.getElementById("qrId").value = id;
+      document.getElementById("qrTitle").value = title;
+      document.getElementById("qrTargetUrl").value = decodeURIComponent(encodedTargetUrl);
+      
+      if (shortUrl) {
+        document.getElementById("resultShortUrl").value = shortUrl;
+        renderQRCode(shortUrl);
+        document.getElementById("resultArea").classList.remove("d-none");
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    // Sinh ID ngẫu nhiên chỉ gồm 3-4 ký tự để giữ link siêu ngắn
+    function generateShortId() {
+      const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+      let res = "";
+      for (let i = 0; i < 3; i++) {
+        res += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      document.getElementById("qrId").value = res;
+    }
+  </script>
+</body>
+</html>
